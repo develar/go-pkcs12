@@ -20,6 +20,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"github.com/geoffgarside/ber"
 )
 
 var (
@@ -98,7 +99,7 @@ const (
 // unmarshal calls asn1.Unmarshal, but also returns an error if there is any
 // trailing data after unmarshaling.
 func unmarshal(in []byte, out interface{}) error {
-	trailing, err := asn1.Unmarshal(in, out)
+	trailing, err := ber.Unmarshal(in, out)
 	if err != nil {
 		return err
 	}
