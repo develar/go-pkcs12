@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"github.com/develar/go-pkcs12/internal/rc2"
 )
 
 var (
@@ -45,7 +46,7 @@ func (shaWithTripleDESCBC) deriveIV(salt, password []byte, iterations int) []byt
 type shaWith40BitRC2CBC struct{}
 
 func (shaWith40BitRC2CBC) create(key []byte) (cipher.Block, error) {
-	return New(key, len(key)*8)
+	return rc2.New(key, len(key)*8)
 }
 
 func (shaWith40BitRC2CBC) deriveKey(salt, password []byte, iterations int) []byte {
@@ -61,7 +62,7 @@ type pbeParams struct {
 	Iterations int
 }
 
-func pbeCipherFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher.Block, []byte, error) {
+func pbDecrypterFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher.BlockMode, int, error) {
 	var cipherType pbeCipher
 
 	switch {
@@ -70,27 +71,18 @@ func pbeCipherFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher.B
 	case algorithm.Algorithm.Equal(oidPBEWithSHAAnd40BitRC2CBC):
 		cipherType = shaWith40BitRC2CBC{}
 	default:
-		return nil, nil, NotImplementedError("algorithm " + algorithm.Algorithm.String() + " is not supported")
+		return nil, 0, NotImplementedError("algorithm " + algorithm.Algorithm.String() + " is not supported")
 	}
 
 	var params pbeParams
 	if err := unmarshal(algorithm.Parameters.FullBytes, &params); err != nil {
-		return nil, nil, err
+		return nil, 0, err
 	}
 
 	key := cipherType.deriveKey(params.Salt, password, params.Iterations)
 	iv := cipherType.deriveIV(params.Salt, password, params.Iterations)
 
 	block, err := cipherType.create(key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return block, iv, nil
-}
-
-func pbDecrypterFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher.BlockMode, int, error) {
-	block, iv, err := pbeCipherFor(algorithm, password)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -131,40 +123,8 @@ func pbDecrypt(info decryptable, password []byte) (decrypted []byte, err error) 
 	return
 }
 
-// decryptable abstracts a object that contains ciphertext.
+// decryptable abstracts an object that contains ciphertext.
 type decryptable interface {
 	Algorithm() pkix.AlgorithmIdentifier
 	Data() []byte
-}
-
-func pbEncrypterFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher.BlockMode, int, error) {
-	block, iv, err := pbeCipherFor(algorithm, password)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return cipher.NewCBCEncrypter(block, iv), block.BlockSize(), nil
-}
-
-func pbEncrypt(info encryptable, decrypted []byte, password []byte) error {
-	cbc, blockSize, err := pbEncrypterFor(info.Algorithm(), password)
-	if err != nil {
-		return err
-	}
-
-	psLen := blockSize - len(decrypted)%blockSize
-	encrypted := make([]byte, len(decrypted)+psLen)
-	copy(encrypted[:len(decrypted)], decrypted)
-	copy(encrypted[len(decrypted):], bytes.Repeat([]byte{byte(psLen)}, psLen))
-	cbc.CryptBlocks(encrypted, encrypted)
-
-	info.SetData(encrypted)
-
-	return nil
-}
-
-// encryptable abstracts a object that contains ciphertext.
-type encryptable interface {
-	Algorithm() pkix.AlgorithmIdentifier
-	SetData([]byte)
 }

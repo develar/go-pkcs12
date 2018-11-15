@@ -2,7 +2,6 @@ package pkcs12
 
 import (
 	"crypto/x509"
-	"errors"
 )
 
 func DecodeAllCerts(pfxData []byte, password string) ([]*x509.Certificate, error) {
@@ -17,7 +16,6 @@ func DecodeAllCerts(pfxData []byte, password string) ([]*x509.Certificate, error
 	}
 
 	var result []*x509.Certificate
-
 	for _, bag := range bags {
 		switch {
 		case bag.Id.Equal(oidCertBag):
@@ -29,13 +27,8 @@ func DecodeAllCerts(pfxData []byte, password string) ([]*x509.Certificate, error
 			if err != nil {
 				return nil, err
 			}
-			if len(certs) != 1 {
-				err = errors.New("pkcs12: expected exactly one certificate in the certBag")
-				return nil, err
-			}
-			result = append(result, certs[0])
+			result = append(result, certs...)
 		}
 	}
-
 	return result, nil
 }
